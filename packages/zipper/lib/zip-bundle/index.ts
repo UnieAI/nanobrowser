@@ -32,7 +32,15 @@ function streamFileToZip(
   zip.add(data);
 
   createReadStream(absPath)
-    .on('data', (chunk: Buffer) => data.push(chunk, false))
+    .on('data', (chunk: string | Buffer) => {
+      if (Buffer.isBuffer(chunk)) {
+        data.push(chunk, false);
+      } else {
+        // 如果你的邏輯不允許 string，也可以選擇轉 Buffer 或報錯
+        const buffer = Buffer.from(chunk, 'utf8');
+        data.push(buffer, false);
+      }
+    })
     .on('end', () => data.push(new Uint8Array(0), true))
     .on('error', error => {
       onAbort();
