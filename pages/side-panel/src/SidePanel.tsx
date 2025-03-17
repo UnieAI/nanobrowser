@@ -18,6 +18,7 @@ const SidePanel = () => {
   const [inputEnabled, setInputEnabled] = useState(true);
   const [showStopButton, setShowStopButton] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [showWebUITab, setShowWebUITab] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [chatSessions, setChatSessions] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
   const [isFollowUpMode, setIsFollowUpMode] = useState(false);
@@ -508,13 +509,15 @@ const SidePanel = () => {
                 </button>
               </>
             )}
-            {/* <a
-              href="https://discord.gg/NN3ABHggMK"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="header-icon text-sky-400 hover:text-sky-500">
+            <button
+              type="button"
+              onClick={() => setShowWebUITab(prev => !prev)}
+              className="header-icon text-sky-400 hover:text-sky-500 cursor-pointer"
+              aria-label="Toggle WebUI"
+              tabIndex={0}>
               <RxDiscordLogo size={20} />
-            </a> */}
+            </button>
+
             <button
               type="button"
               onClick={() => chrome.runtime.openOptionsPage()}
@@ -526,51 +529,60 @@ const SidePanel = () => {
             </button>
           </div>
         </header>
-        {showHistory ? (
-          <div className="flex-1 overflow-hidden">
-            <ChatHistoryList
-              sessions={chatSessions}
-              onSessionSelect={handleSessionSelect}
-              onSessionDelete={handleSessionDelete}
-              visible={true}
-            />
-          </div>
-        ) : (
+
+        <div className={`${showWebUITab ? 'h-full w-full p-2' : 'h-0 w-0'}`}>
+          <iframe className="h-full w-full rounded-lg" src="https://priv-w.unieai.com"></iframe>
+        </div>
+
+        {!showWebUITab && (
           <>
-            {messages.length === 0 && (
-              <>
-                <div className="border-t border-sky-100 backdrop-blur-sm p-2 shadow-sm mb-2">
-                  <ChatInput
-                    onSendMessage={handleSendMessage}
-                    onStopTask={handleStopTask}
-                    disabled={!inputEnabled || isHistoricalSession}
-                    showStopButton={showStopButton}
-                    setContent={setter => {
-                      setInputTextRef.current = setter;
-                    }}
-                  />
-                </div>
-                <div>
-                  <TemplateList templates={defaultTemplates} onTemplateSelect={handleTemplateSelect} />
-                </div>
-              </>
-            )}
-            <div className="flex-1 overflow-y-scroll overflow-x-hidden scrollbar-gutter-stable p-4 scroll-smooth">
-              <MessageList messages={messages} />
-              <div ref={messagesEndRef} />
-            </div>
-            {messages.length > 0 && (
-              <div className="border-t border-sky-100 backdrop-blur-sm p-2 shadow-sm">
-                <ChatInput
-                  onSendMessage={handleSendMessage}
-                  onStopTask={handleStopTask}
-                  disabled={!inputEnabled || isHistoricalSession}
-                  showStopButton={showStopButton}
-                  setContent={setter => {
-                    setInputTextRef.current = setter;
-                  }}
+            {showHistory ? (
+              <div className="flex-1 overflow-hidden">
+                <ChatHistoryList
+                  sessions={chatSessions}
+                  onSessionSelect={handleSessionSelect}
+                  onSessionDelete={handleSessionDelete}
+                  visible={true}
                 />
               </div>
+            ) : (
+              <>
+                {messages.length === 0 && (
+                  <>
+                    <div className="border-t border-sky-100 backdrop-blur-sm p-2 shadow-sm mb-2">
+                      <ChatInput
+                        onSendMessage={handleSendMessage}
+                        onStopTask={handleStopTask}
+                        disabled={!inputEnabled || isHistoricalSession}
+                        showStopButton={showStopButton}
+                        setContent={setter => {
+                          setInputTextRef.current = setter;
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <TemplateList templates={defaultTemplates} onTemplateSelect={handleTemplateSelect} />
+                    </div>
+                  </>
+                )}
+                <div className="flex-1 overflow-y-scroll overflow-x-hidden scrollbar-gutter-stable p-4 scroll-smooth">
+                  <MessageList messages={messages} />
+                  <div ref={messagesEndRef} />
+                </div>
+                {messages.length > 0 && (
+                  <div className="border-t border-sky-100 backdrop-blur-sm p-2 shadow-sm">
+                    <ChatInput
+                      onSendMessage={handleSendMessage}
+                      onStopTask={handleStopTask}
+                      disabled={!inputEnabled || isHistoricalSession}
+                      showStopButton={showStopButton}
+                      setContent={setter => {
+                        setInputTextRef.current = setter;
+                      }}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
