@@ -1,6 +1,7 @@
 import { StorageEnum } from '../base/enums';
 import { createStorage } from '../base/base';
 import type { BaseStorage } from '../base/types';
+import type { LLMProviderEnum } from './types';
 
 // Interface for a single provider configuration
 export interface ProviderConfig {
@@ -10,21 +11,21 @@ export interface ProviderConfig {
 
 // Interface for storing multiple LLM provider configurations
 export interface LLMKeyRecord {
-  providers: Record<string, ProviderConfig>; // Now only UnieAI is needed
+  providers: Record<LLMProviderEnum, ProviderConfig>;
 }
 
 export type LLMProviderStorage = BaseStorage<LLMKeyRecord> & {
-  setProvider: (provider: string, config: ProviderConfig) => Promise<void>;
-  getProvider: (provider: string) => Promise<ProviderConfig | undefined>;
-  removeProvider: (provider: string) => Promise<void>;
-  hasProvider: (provider: string) => Promise<boolean>;
-  getConfiguredProviders: () => Promise<string[]>;
-  getAllProviders: () => Promise<Record<string, ProviderConfig>>;
+  setProvider: (provider: LLMProviderEnum, config: ProviderConfig) => Promise<void>;
+  getProvider: (provider: LLMProviderEnum) => Promise<ProviderConfig | undefined>;
+  removeProvider: (provider: LLMProviderEnum) => Promise<void>;
+  hasProvider: (provider: LLMProviderEnum) => Promise<boolean>;
+  getConfiguredProviders: () => Promise<LLMProviderEnum[]>;
+  getAllProviders: () => Promise<Record<LLMProviderEnum, ProviderConfig>>;
 };
 
 const storage = createStorage<LLMKeyRecord>(
   'llm-api-keys',
-  { providers: {} as Record<string, ProviderConfig> },
+  { providers: {} as Record<LLMProviderEnum, ProviderConfig> },
   {
     storageEnum: StorageEnum.Local,
     liveUpdate: true,
@@ -33,7 +34,7 @@ const storage = createStorage<LLMKeyRecord>(
 
 export const llmProviderStore: LLMProviderStorage = {
   ...storage,
-  async setProvider(provider: string, config: ProviderConfig) {
+  async setProvider(provider: LLMProviderEnum, config: ProviderConfig) {
     if (!provider) {
       throw new Error('Provider name cannot be empty');
     }
@@ -48,23 +49,32 @@ export const llmProviderStore: LLMProviderStorage = {
       },
     });
   },
-  async getProvider(provider: string) {
+  async getProvider(provider: LLMProviderEnum) {
     const data = (await storage.get()) || { providers: {} };
     return data.providers[provider];
   },
-  async removeProvider(provider: string) {
+  async removeProvider(provider: LLMProviderEnum) {
     const current = (await storage.get()) || { providers: {} };
     const newProviders = { ...current.providers };
     delete newProviders[provider];
     await storage.set({ providers: newProviders });
   },
-  async hasProvider(provider: string) {
+  async hasProvider(provider: LLMProviderEnum) {
     const data = (await storage.get()) || { providers: {} };
     return provider in data.providers;
   },
   async getConfiguredProviders() {
+    console.log('Getting configured providers');
     const data = await storage.get();
-    return Object.keys(data.providers);
+    console.log('Raw storage data:', data); // Debug the entire data object
+
+    if (!data || !data.providers) {
+      console.log('No data found, returning empty array');
+      return [];
+    }
+
+    console.log('Configured providers:', data.providers);
+    return Object.keys(data.providers) as LLMProviderEnum[];
   },
   async getAllProviders() {
     const data = await storage.get();

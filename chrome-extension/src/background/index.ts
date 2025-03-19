@@ -179,7 +179,9 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
 
   const navigatorModel = agentModels[AgentNameEnum.Navigator];
   if (!navigatorModel) {
-    throw new Error('Please choose a model for the navigator in the settings first');
+    throw new Error(
+      `Please choose a model for the navigator in the settings first. agentModels: ${JSON.stringify(agentModels)}`,
+    );
   }
   const navigatorLLM = createChatModel(
     AgentNameEnum.Navigator,

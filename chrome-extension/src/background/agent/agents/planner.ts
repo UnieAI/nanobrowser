@@ -65,7 +65,7 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
     } catch (error) {
       // Check if this is an authentication error
       if (isAuthenticationError(error)) {
-        throw new ChatModelAuthError('Planner API Authentication failed. Please verify your API key', error);
+        throw new ChatModelAuthError(`Planner API Authentication failed. Please verify your API key,${error}`, error);
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.context.emitEvent(Actors.PLANNER, ExecutionState.STEP_FAIL, `Planning failed: ${errorMessage}`);
