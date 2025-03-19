@@ -1,12 +1,11 @@
 import { StorageEnum } from '../base/enums';
 import { createStorage } from '../base/base';
 import type { BaseStorage } from '../base/types';
-import { type AgentNameEnum, type LLMProviderEnum, llmProviderModelNames } from './types';
+import { type AgentNameEnum } from './types';
 
 // Interface for a single model configuration
 export interface ModelConfig {
-  provider: LLMProviderEnum;
-  modelName: string;
+  modelName: string; // Only model name now, as we only support UnieAI
 }
 
 // Interface for storing multiple agent model configurations
@@ -15,7 +14,7 @@ export interface AgentModelRecord {
 }
 
 export type AgentModelStorage = BaseStorage<AgentModelRecord> & {
-  setAgentModel: (agent: AgentNameEnum, config: ModelConfig) => Promise<void>;
+  setAgentModel: (agent: AgentNameEnum, config: ModelConfig, availableModels: string[]) => Promise<void>;
   getAgentModel: (agent: AgentNameEnum) => Promise<ModelConfig | undefined>;
   resetAgentModel: (agent: AgentNameEnum) => Promise<void>;
   hasAgentModel: (agent: AgentNameEnum) => Promise<boolean>;
@@ -32,21 +31,20 @@ const storage = createStorage<AgentModelRecord>(
   },
 );
 
-function validateModelConfig(config: ModelConfig) {
-  if (!config.provider || !config.modelName) {
-    throw new Error('Provider and model name must be specified');
+function validateModelConfig(config: ModelConfig, availableModels: string[]) {
+  if (!config.modelName) {
+    throw new Error('Model name must be specified');
   }
 
-  const validModels = llmProviderModelNames[config.provider];
-  if (!validModels.includes(config.modelName)) {
-    throw new Error(`Invalid model "${config.modelName}" for provider "${config.provider}"`);
+  if (!availableModels.includes(config.modelName)) {
+    throw new Error(`Invalid model "${config.modelName}"`);
   }
 }
 
 export const agentModelStore: AgentModelStorage = {
   ...storage,
-  setAgentModel: async (agent: AgentNameEnum, config: ModelConfig) => {
-    validateModelConfig(config);
+  setAgentModel: async (agent: AgentNameEnum, config: ModelConfig, availableModels: string[]) => {
+    validateModelConfig(config, availableModels); // 確保模型有效
     await storage.set(current => ({
       agents: {
         ...current.agents,

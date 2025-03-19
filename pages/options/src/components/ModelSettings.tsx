@@ -1,33 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@extension/ui';
-import {
-  llmProviderStore,
-  agentModelStore,
-  AgentNameEnum,
-  LLMProviderEnum,
-  llmProviderModelNames,
-} from '@extension/storage';
+import { llmProviderStore, agentModelStore, AgentNameEnum } from '@extension/storage';
 
 export const ModelSettings = () => {
-  const [apiKeys, setApiKeys] = useState<Record<LLMProviderEnum, { apiKey: string; baseUrl?: string }>>(
-    {} as Record<LLMProviderEnum, { apiKey: string; baseUrl?: string }>,
-  );
-  const [modifiedProviders, setModifiedProviders] = useState<Set<LLMProviderEnum>>(new Set());
+  const unieAIBaseApiUrl = 'https://api2.unieai.com/v1';
+  const [apiKeys, setApiKeys] = useState<Record<string, { apiKey: string; baseUrl?: string }>>({});
+  const [modifiedProviders, setModifiedProviders] = useState<Set<string>>(new Set());
   const [selectedModels, setSelectedModels] = useState<Record<AgentNameEnum, string>>({
     [AgentNameEnum.Navigator]: '',
     [AgentNameEnum.Planner]: '',
     [AgentNameEnum.Validator]: '',
   });
+  const [availableModels, setAvailableModels] = useState<string[]>([]); // 用來儲存從 API 取得的模型
 
+  // 載入 API 金鑰
   useEffect(() => {
     const loadApiKeys = async () => {
       try {
         const providers = await llmProviderStore.getConfiguredProviders();
-
-        const keys: Record<LLMProviderEnum, { apiKey: string; baseUrl?: string }> = {} as Record<
-          LLMProviderEnum,
-          { apiKey: string; baseUrl?: string }
-        >;
+        const keys: Record<string, { apiKey: string; baseUrl?: string }> = {};
 
         for (const provider of providers) {
           const config = await llmProviderStore.getProvider(provider);
@@ -38,39 +29,54 @@ export const ModelSettings = () => {
         setApiKeys(keys);
       } catch (error) {
         console.error('Error loading API keys:', error);
-        setApiKeys({} as Record<LLMProviderEnum, { apiKey: string; baseUrl?: string }>);
       }
     };
-
     loadApiKeys();
   }, []);
 
-  // Load existing agent models on mount
-  useEffect(() => {
-    const loadAgentModels = async () => {
-      try {
-        const models: Record<AgentNameEnum, string> = {
-          [AgentNameEnum.Planner]: '',
-          [AgentNameEnum.Navigator]: '',
-          [AgentNameEnum.Validator]: '',
-        };
+  // 取得可用模型
+  const getAvailableModels = async (baseUrl: string, apiKey: string) => {
+    try {
+      const res = await fetch(`${baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `${apiKey}`,
+        },
+      });
 
-        for (const agent of Object.values(AgentNameEnum)) {
-          const config = await agentModelStore.getAgentModel(agent);
-          if (config) {
-            models[agent] = config.modelName;
-          }
-        }
-        setSelectedModels(models);
-      } catch (error) {
-        console.error('Error loading agent models:', error);
+      if (!res.ok) {
+        const errorBody = await res.json();
+        return new Response(`error: ${res.statusText} - ${errorBody.detail || 'Unknown error'}`, {
+          status: res.status,
+        });
+      }
+
+      const data = await res.json();
+      console.log(data);
+      const modelIds = data?.data.map((model: any) => model.id) || []; // Extracting model ids
+      return modelIds; // Return the array of model ids
+    } catch (error) {
+      console.error('Error fetching models from API:', error);
+      return []; // 如果出錯返回空陣列
+    }
+  };
+
+  // 當 API 金鑰變更時，重新載入模型
+  useEffect(() => {
+    const loadModels = async () => {
+      const apiKey = apiKeys['unieai']?.apiKey;
+      const baseUrl = apiKeys['unieai']?.baseUrl || unieAIBaseApiUrl;
+      if (apiKey) {
+        const models = await getAvailableModels(baseUrl, apiKey);
+        setAvailableModels(models);
       }
     };
 
-    loadAgentModels();
-  }, []);
+    loadModels();
+  }, [apiKeys, modifiedProviders]); // Add both `apiKeys` and `modifiedProviders` as dependencies
 
-  const handleApiKeyChange = (provider: LLMProviderEnum, apiKey: string, baseUrl?: string) => {
+  const handleApiKeyChange = (provider: string, apiKey: string, baseUrl?: string) => {
     setModifiedProviders(prev => new Set(prev).add(provider));
     setApiKeys(prev => ({
       ...prev,
@@ -81,7 +87,7 @@ export const ModelSettings = () => {
     }));
   };
 
-  const handleSave = async (provider: LLMProviderEnum) => {
+  const handleSave = async (provider: string) => {
     try {
       await llmProviderStore.setProvider(provider, apiKeys[provider]);
       setModifiedProviders(prev => {
@@ -94,7 +100,7 @@ export const ModelSettings = () => {
     }
   };
 
-  const handleDelete = async (provider: LLMProviderEnum) => {
+  const handleDelete = async (provider: string) => {
     try {
       await llmProviderStore.removeProvider(provider);
       setApiKeys(prev => {
@@ -107,7 +113,53 @@ export const ModelSettings = () => {
     }
   };
 
-  const getButtonProps = (provider: LLMProviderEnum) => {
+  const handleModelChange = async (agentName: AgentNameEnum, model: string) => {
+    setSelectedModels(prev => ({
+      ...prev,
+      [agentName]: model,
+    }));
+
+    try {
+      if (model) {
+        await agentModelStore.setAgentModel(
+          agentName,
+          {
+            modelName: model,
+          },
+          availableModels,
+        );
+      } else {
+        await agentModelStore.resetAgentModel(agentName);
+      }
+    } catch (error) {
+      console.error('Error saving agent model:', error);
+    }
+  };
+
+  const renderModelSelect = (agentName: AgentNameEnum) => (
+    <div className="flex items-center justify-between">
+      <div>
+        <h3 className="text-lg font-medium text-gray-700">{agentName.charAt(0).toUpperCase() + agentName.slice(1)}</h3>
+      </div>
+      <select
+        className="w-64 px-3 py-2 border rounded-md"
+        disabled={availableModels.length <= 1}
+        value={selectedModels[agentName] || ''}
+        onChange={e => handleModelChange(agentName, e.target.value)}>
+        <option key="default" value="">
+          Choose model
+        </option>
+        {availableModels.map(model => (
+          <option key={model} value={model}>
+            {model}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  // getButtonProps 定義
+  const getButtonProps = (provider: string) => {
     const hasStoredKey = Boolean(apiKeys[provider]?.apiKey);
     const isModified = modifiedProviders.has(provider);
     const hasInput = Boolean(apiKeys[provider]?.apiKey?.trim());
@@ -127,180 +179,37 @@ export const ModelSettings = () => {
     };
   };
 
-  const getAvailableModels = () => {
-    const models: string[] = [];
-    Object.entries(apiKeys).forEach(([provider, config]) => {
-      if (config.apiKey) {
-        models.push(...(llmProviderModelNames[provider as LLMProviderEnum] || []));
-      }
-    });
-    return models.length ? models : [''];
-  };
-
-  const handleModelChange = async (agentName: AgentNameEnum, model: string) => {
-    setSelectedModels(prev => ({
-      ...prev,
-      [agentName]: model,
-    }));
-
-    try {
-      if (model) {
-        // Determine provider from model name
-        let provider: LLMProviderEnum | undefined;
-        for (const [providerKey, models] of Object.entries(llmProviderModelNames)) {
-          if (models.includes(model)) {
-            provider = providerKey as LLMProviderEnum;
-            break;
-          }
-        }
-
-        if (provider) {
-          await agentModelStore.setAgentModel(agentName, {
-            provider,
-            modelName: model,
-          });
-        }
-      } else {
-        // Reset storage if no model is selected
-        await agentModelStore.resetAgentModel(agentName);
-      }
-    } catch (error) {
-      console.error('Error saving agent model:', error);
-    }
-  };
-
-  const renderModelSelect = (agentName: AgentNameEnum) => (
-    <div className="flex items-center justify-between">
-      <div>
-        <h3 className="text-lg font-medium text-gray-700">{agentName.charAt(0).toUpperCase() + agentName.slice(1)}</h3>
-        <p className="text-sm font-normal text-gray-500">{getAgentDescription(agentName)}</p>
-      </div>
-      <select
-        className="w-64 px-3 py-2 border rounded-md"
-        disabled={getAvailableModels().length <= 1}
-        value={selectedModels[agentName] || ''}
-        onChange={e => handleModelChange(agentName, e.target.value)}>
-        <option key="default" value="">
-          Choose model
-        </option>
-        {getAvailableModels().map(
-          model =>
-            model && (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ),
-        )}
-      </select>
-    </div>
-  );
-
-  const getAgentDescription = (agentName: AgentNameEnum) => {
-    switch (agentName) {
-      case AgentNameEnum.Navigator:
-        return 'Navigates websites and performs actions';
-      case AgentNameEnum.Planner:
-        return 'Develops and refines strategies to complete tasks';
-      case AgentNameEnum.Validator:
-        return 'Checks if tasks are completed successfully';
-      default:
-        return '';
-    }
-  };
-
   return (
     <section className="space-y-6">
-      {/* API Keys Section */}
       <div className="bg-white rounded-lg p-6 shadow-sm border border-blue-100 text-left">
         <h2 className="text-xl font-semibold mb-4 text-gray-800 text-left">API Keys</h2>
         <div className="space-y-6">
-          {/* OpenAI Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-700">OpenAI</h3>
+              <h3 className="text-lg font-medium text-gray-700">UnieAI</h3>
               <Button
-                {...getButtonProps(LLMProviderEnum.OpenAI)}
+                {...getButtonProps('unieai')}
                 size="sm"
                 onClick={() =>
-                  apiKeys[LLMProviderEnum.OpenAI]?.apiKey && !modifiedProviders.has(LLMProviderEnum.OpenAI)
-                    ? handleDelete(LLMProviderEnum.OpenAI)
-                    : handleSave(LLMProviderEnum.OpenAI)
+                  apiKeys['unieai']?.apiKey && !modifiedProviders.has('unieai')
+                    ? handleDelete('unieai')
+                    : handleSave('unieai')
                 }
               />
             </div>
             <div className="space-y-3">
               <input
                 type="password"
-                placeholder="OpenAI API key"
-                value={apiKeys[LLMProviderEnum.OpenAI]?.apiKey || ''}
-                onChange={e => handleApiKeyChange(LLMProviderEnum.OpenAI, e.target.value)}
+                placeholder="UnieAI API key"
+                value={apiKeys['unieai']?.apiKey || ''}
+                onChange={e => handleApiKeyChange('unieai', e.target.value)}
                 className="w-full p-2 rounded-md bg-gray-50 border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none"
               />
               <input
                 type="text"
                 placeholder="Custom Base URL (Optional)"
-                value={apiKeys[LLMProviderEnum.OpenAI]?.baseUrl || ''}
-                onChange={e =>
-                  handleApiKeyChange(
-                    LLMProviderEnum.OpenAI,
-                    apiKeys[LLMProviderEnum.OpenAI]?.apiKey || '',
-                    e.target.value,
-                  )
-                }
-                className="w-full p-2 rounded-md bg-gray-50 border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200"></div>
-
-          {/* Anthropic Section */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-700">Anthropic</h3>
-              <Button
-                {...getButtonProps(LLMProviderEnum.Anthropic)}
-                size="sm"
-                onClick={() =>
-                  apiKeys[LLMProviderEnum.Anthropic]?.apiKey && !modifiedProviders.has(LLMProviderEnum.Anthropic)
-                    ? handleDelete(LLMProviderEnum.Anthropic)
-                    : handleSave(LLMProviderEnum.Anthropic)
-                }
-              />
-            </div>
-            <div className="space-y-3">
-              <input
-                type="password"
-                placeholder="Anthropic API key"
-                value={apiKeys[LLMProviderEnum.Anthropic]?.apiKey || ''}
-                onChange={e => handleApiKeyChange(LLMProviderEnum.Anthropic, e.target.value)}
-                className="w-full p-2 rounded-md bg-gray-50 border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Gemini Section */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-700">Gemini</h3>
-              <Button
-                {...getButtonProps(LLMProviderEnum.Gemini)}
-                size="sm"
-                onClick={() =>
-                  apiKeys[LLMProviderEnum.Gemini]?.apiKey && !modifiedProviders.has(LLMProviderEnum.Gemini)
-                    ? handleDelete(LLMProviderEnum.Gemini)
-                    : handleSave(LLMProviderEnum.Gemini)
-                }
-              />
-            </div>
-            <div className="space-y-3">
-              <input
-                type="password"
-                placeholder="Gemini API key"
-                value={apiKeys[LLMProviderEnum.Gemini]?.apiKey || ''}
-                onChange={e => handleApiKeyChange(LLMProviderEnum.Gemini, e.target.value)}
+                value={apiKeys['unieai']?.baseUrl || unieAIBaseApiUrl}
+                onChange={e => handleApiKeyChange('unieai', apiKeys['unieai']?.apiKey || '', e.target.value)}
                 className="w-full p-2 rounded-md bg-gray-50 border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none"
               />
             </div>
@@ -308,7 +217,6 @@ export const ModelSettings = () => {
         </div>
       </div>
 
-      {/* Updated Agent Models Section */}
       <div className="bg-white rounded-lg p-6 shadow-sm border border-blue-100 text-left">
         <h2 className="text-xl font-semibold mb-4 text-gray-800 text-left">Model Selection</h2>
         <div className="space-y-4">
